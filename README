@@ -1,2 +1,3 @@
 ## Revision History 
 v0.1: python client library using mqtt
+v0.2: python client library for new device server using requests
