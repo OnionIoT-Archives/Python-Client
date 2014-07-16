@@ -1,23 +1,32 @@
 import requests
 import json
+import uuid
+import os.path
+
+mfr="ONION"
 
 host = 'http://aws.onion.io/'
 functions={}
 
-testKey = 'e5f0ff18-da97-4eac-8c18-104322373050' #some testing data
-testId = '456789000'
-devKey = testKey #these should read from non-volatile memory instead
-devId = testId
-mfr="ddTest" #this should be manufacturer specific
-addr="123456789" #this should import the device MAC or generate a random address
-
 def register():
-    #replace defaults with correct values if device not yet registered
-    res=json.load(requests.get(host+"/ds/register/{0}/{1}".format(mfr,addr)))
-    if res["error"]: print res["error"]
-    else:
-        devId = res["deviceId"]
-        devKey = res["deviceKey"]
+    conf_file='onion_dev'
+    if not os.path.isfile(conf_file):
+        addr = ''.join(['{:02x}'.format((uuid.getnode() >> i) & 0xff) for i in range(0,8*6,8)][::-1]).upper()
+        res=requests.get(host+"/ds/v1/register/{0}/{1}".format(mfr,addr)).json()
+        if "error" in res:
+            print res["error"]
+            return
+        config = open(conf_file,'w')
+        config.write(str(res["deviceId"])+'\n')
+        config.write(str(res["deviceKey"])+'\n')
+	    config.close()
+    config=open(conf_file,'r')
+    global devId
+    devId = config.readline().rstrip()
+    global devKey
+    devKey = config.readline().rstrip()
+    config.close()
+    return
 
 def listen():
     url=host+'ds/v1/listen/{0}'.format(devKey)
@@ -25,20 +34,21 @@ def listen():
     req=requests.Request("GET",url).prepare()
     res=s.send(req, stream=True, timeout=60)
     streambuffer = ''
-    try: gen = res.iter_content()
-    except httplib.IncompleteRead: pass
-    for byte in gen:
-        if byte:
-            streambuffer += byte
-            try:
-                func = json.loads(streambuffer)
-            except ValueError:
-                continue
-            yield func
-            streambuffer = ''
+    gen = res.iter_content()
+    try:
+        for byte in gen:
+            if byte:
+                streambuffer += byte
+                try:
+                    func = json.loads(streambuffer)
+                except ValueError:
+                    continue
+                yield func
+                streambuffer = ''
+    except requests.exceptions.ChunkedEncodingError: pass
 
 def declare(function,endpoint):
-    #check if on server, upload if not (server-side declaration not implmented yet)
+    #check if on server, upload if not (server-side declaration not implemented yet)
     functions[endpoint]=function
 
 def loop():
@@ -48,3 +58,5 @@ def loop():
                 if response["function_id"] != None: functions[response["function_id"]](response["params"])
         except requests.exceptions.Timeout: #survive timeouts
             pass
+
+register()
