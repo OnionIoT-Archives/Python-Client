@@ -3,14 +3,10 @@ import json
 import uuid
 import os.path
 
-mfr="ONION"
-
-host = 'http://aws.onion.io/'
-functions={}
-
 def register():
-    conf_file='onion_dev'
+    conf_file='/etc/onion_dev'
     if not os.path.isfile(conf_file):
+        mfr = "ONION"
         addr = ''.join(['{:02x}'.format((uuid.getnode() >> i) & 0xff) for i in range(0,8*6,8)][::-1]).upper()
         res=requests.get(host+"/ds/v1/register/{0}/{1}".format(mfr,addr)).json()
         if "error" in res:
@@ -19,7 +15,7 @@ def register():
         config = open(conf_file,'w')
         config.write(str(res["deviceId"])+'\n')
         config.write(str(res["deviceKey"])+'\n')
-	    config.close()
+	config.close()
     config=open(conf_file,'r')
     global devId
     devId = config.readline().rstrip()
@@ -48,7 +44,7 @@ def listen():
     except requests.exceptions.ChunkedEncodingError: pass
 
 def declare(function,endpoint):
-    #check if on server, upload if not (server-side declaration not implemented yet)
+    #check if on server, upload if not (server-side declaration not implmented yet)
     functions[endpoint]=function
 
 def loop():
@@ -59,4 +55,6 @@ def loop():
         except requests.exceptions.Timeout: #survive timeouts
             pass
 
+host = 'http://aws.onion.io/'
+functions={}
 register()
