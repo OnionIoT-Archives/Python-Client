@@ -3,15 +3,27 @@ import json
 import uuid
 import os.path
 
+host = 'http://aws.onion.io/'
+mfr = "ONION"
+device_type="Computer"
+firmware_version=""
+hardware_version=""
+
+functions={}
+function_template=[]
+
+def declare(function,endpoint,default={}):
+    function_template.append({"function_id":endpoint,"params":default})
+    functions[endpoint]=function
+    return function_template
+
 def register():
-    conf_file='/etc/onion_dev'
+    conf_file='onion_dev'
     if not os.path.isfile(conf_file):
-        mfr = "ONION"
         addr = ''.join(['{:02x}'.format((uuid.getnode() >> i) & 0xff) for i in range(0,8*6,8)][::-1]).upper()
         res=requests.get(host+"/ds/v1/register/{0}/{1}".format(mfr,addr)).json()
         if "error" in res:
-            print res["error"]
-            return
+            return res
         config = open(conf_file,'w')
         config.write(str(res["deviceId"])+'\n')
         config.write(str(res["deviceKey"])+'\n')
@@ -22,7 +34,13 @@ def register():
     global devKey
     devKey = config.readline().rstrip()
     config.close()
-    return
+    return devKey
+
+def update_device():
+    url=host+'ds/v1/declare/{0}'.format(devKey)
+    data={"device_type":device_type,"firmware_version":firmware_version,"hardware_version":hardware_version,"functions":function_template}
+    res=requests.post(url,data=json.dumps(data))
+    return res
 
 def listen():
     url=host+'ds/v1/listen/{0}'.format(devKey)
@@ -43,10 +61,6 @@ def listen():
                 streambuffer = ''
     except requests.exceptions.ChunkedEncodingError: pass
 
-def declare(function,endpoint):
-    #check if on server, upload if not (server-side declaration not implmented yet)
-    functions[endpoint]=function
-
 def loop():
     while True:
         try:
@@ -54,7 +68,3 @@ def loop():
                 if response["function_id"] != None: functions[response["function_id"]](response["params"])
         except requests.exceptions.Timeout: #survive timeouts
             pass
-
-host = 'http://aws.onion.io/'
-functions={}
-register()
